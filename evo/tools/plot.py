@@ -254,21 +254,21 @@ def prepare_axis(fig: plt.Figure, plot_mode: PlotMode = PlotMode.xy,
         ax = fig.add_subplot(subplot_arg)
         ax.axis("equal")
     if plot_mode in {PlotMode.xy, PlotMode.xz, PlotMode.xyz}:
-        xlabel = "$x$ (m)"
+        xlabel = "x [m]"
     elif plot_mode in {PlotMode.yz, PlotMode.yx}:
-        xlabel = "$y$ (m)"
+        xlabel = "y [m]"
     else:
-        xlabel = "$z$ (m)"
+        xlabel = "z [m]"
     if plot_mode in {PlotMode.xy, PlotMode.zy, PlotMode.xyz}:
-        ylabel = "$y$ (m)"
+        ylabel = "y [m]"
     elif plot_mode in {PlotMode.zx, PlotMode.yx}:
-        ylabel = "$x$ (m)"
+        ylabel = "x [m]"
     else:
-        ylabel = "$z$ (m)"
+        ylabel = "z [m]"
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     if plot_mode == PlotMode.xyz:
-        ax.set_zlabel('$z$ (m)')
+        ax.set_zlabel('z [m]')
     if SETTINGS.plot_invert_xaxis:
         plt.gca().invert_xaxis()
     if SETTINGS.plot_invert_yaxis:
@@ -324,7 +324,8 @@ def traj(ax: plt.Axes, plot_mode: PlotMode, traj: trajectory.PosePath3D,
     else:
         ax.plot(x, y, style, color=color, label=label, alpha=alpha)
     if label:
-        ax.legend(frameon=True)
+        # ax.legend(frameon=True)
+        pass
 
 
 def colored_line_collection(
@@ -490,18 +491,19 @@ def traj_xyz(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
             x = traj.timestamps - start_timestamp
         else:
             x = traj.timestamps
-        xlabel = "$t$ (s)"
+        xlabel = "t [s]"
     else:
         x = range(0, len(traj.positions_xyz))
         xlabel = "index"
-    ylabels = ["$x$ (m)", "$y$ (m)", "$z$ (m)"]
+    ylabels = ["x [m]", "y [m]", "z [m]"]
     for i in range(0, 3):
         axarr[i].plot(x, traj.positions_xyz[:, i], style, color=color,
                       label=label, alpha=alpha)
         axarr[i].set_ylabel(ylabels[i])
     axarr[2].set_xlabel(xlabel)
     if label:
-        axarr[0].legend(frameon=True)
+        # axarr[0].legend(frameon=True)
+        pass
 
 
 def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
@@ -528,18 +530,19 @@ def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
             x = traj.timestamps - start_timestamp
         else:
             x = traj.timestamps
-        xlabel = "$t$ (s)"
+        xlabel = "t [s]"
     else:
         x = range(0, len(angles))
         xlabel = "index"
-    ylabels = ["$roll$ (deg)", "$pitch$ (deg)", "$yaw$ (deg)"]
+    ylabels = ["roll [deg]", "pitch [deg]", "yaw [deg]"]
     for i in range(0, 3):
         axarr[i].plot(x, np.rad2deg(angles[:, i]), style, color=color,
                       label=label, alpha=alpha)
         axarr[i].set_ylabel(ylabels[i])
     axarr[2].set_xlabel(xlabel)
     if label:
-        axarr[0].legend(frameon=True)
+        # axarr[0].legend(frameon=True)
+        pass
 
 
 def trajectories(fig: plt.Figure, trajectories: typing.Union[
