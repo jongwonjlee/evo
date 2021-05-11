@@ -486,7 +486,7 @@ def traj_xyz(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
     if len(axarr) != 3:
         raise PlotException("expected an axis array with 3 subplots - got " +
                             str(len(axarr)))
-    if isinstance(traj, trajectory.PoseTrajectory3D):
+    if isinstance(traj, trajectory.PoseTrajectory3D) or isinstance(traj, trajectory.PoseAuxTrajectory3D):
         if start_timestamp:
             x = traj.timestamps - start_timestamp
         else:
@@ -525,7 +525,7 @@ def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
         raise PlotException("expected an axis array with 3 subplots - got " +
                             str(len(axarr)))
     angles = traj.get_orientations_euler(SETTINGS.euler_angle_sequence)
-    if isinstance(traj, trajectory.PoseTrajectory3D):
+    if isinstance(traj, trajectory.PoseTrajectory3D) or isinstance(traj, trajectory.PoseAuxTrajectory3D):
         if start_timestamp:
             x = traj.timestamps - start_timestamp
         else:
@@ -537,6 +537,120 @@ def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
     ylabels = ["roll [deg]", "pitch [deg]", "yaw [deg]"]
     for i in range(0, 3):
         axarr[i].plot(x, np.rad2deg(angles[:, i]), style, color=color,
+                      label=label, alpha=alpha)
+        axarr[i].set_ylabel(ylabels[i])
+    axarr[2].set_xlabel(xlabel)
+    if label:
+        # axarr[0].legend(frameon=True)
+        pass
+
+
+def traj_lin_acc(axarr: np.ndarray, traj: trajectory.PoseAuxPath3D, style: str = '-',
+                 color: str = 'black', label: str = "", alpha: float = 1.0,
+                 start_timestamp: typing.Optional[float] = None) -> None:
+    """
+    plot a path/trajectory based on xyz coordinates into an axis
+    :param axarr: an axis array (for x, y & z)
+                  e.g. from 'fig, axarr = plt.subplots(3)'
+    :param traj: trajectory.PoseAuxPath3D or trajectory.PoseAuxTrajectory3D object
+    :param style: matplotlib line style
+    :param color: matplotlib color
+    :param label: label (for legend)
+    :param alpha: alpha value for transparency
+    :param start_timestamp: optional start time of the reference
+                            (for x-axis alignment)
+    """
+    if len(axarr) != 3:
+        raise PlotException("expected an axis array with 3 subplots - got " +
+                            str(len(axarr)))
+    if isinstance(traj, trajectory.PoseAuxTrajectory3D):
+        if start_timestamp:
+            x = traj.timestamps - start_timestamp
+        else:
+            x = traj.timestamps
+        xlabel = "t [s]"
+    else:
+        x = range(0, len(traj._lin_acc_xyz))
+        xlabel = "index"
+    ylabels = ["x [m/s^2]", "y [m/s^2]", "z [m/s^2]"]
+    for i in range(0, 3):
+        axarr[i].plot(x, traj._lin_acc_xyz[:, i], style, color=color,
+                      label=label, alpha=alpha)
+        axarr[i].set_ylabel(ylabels[i])
+    axarr[2].set_xlabel(xlabel)
+    if label:
+        # axarr[0].legend(frameon=True)
+        pass
+
+
+def traj_ang_vel(axarr: np.ndarray, traj: trajectory.PoseAuxPath3D, style: str = '-',
+                 color: str = 'black', label: str = "", alpha: float = 1.0,
+                 start_timestamp: typing.Optional[float] = None) -> None:
+    """
+    plot a path/trajectory based on xyz coordinates into an axis
+    :param axarr: an axis array (for x, y & z)
+                  e.g. from 'fig, axarr = plt.subplots(3)'
+    :param traj: trajectory.PoseAuxPath3D or trajectory.PoseAuxTrajectory3D object
+    :param style: matplotlib line style
+    :param color: matplotlib color
+    :param label: label (for legend)
+    :param alpha: alpha value for transparency
+    :param start_timestamp: optional start time of the reference
+                            (for x-axis alignment)
+    """
+    if len(axarr) != 3:
+        raise PlotException("expected an axis array with 3 subplots - got " +
+                            str(len(axarr)))
+    if isinstance(traj, trajectory.PoseAuxTrajectory3D):
+        if start_timestamp:
+            x = traj.timestamps - start_timestamp
+        else:
+            x = traj.timestamps
+        xlabel = "t [s]"
+    else:
+        x = range(0, len(traj._ang_vel_xyz))
+        xlabel = "index"
+    ylabels = ["x [rad/s]", "y [rad/s]", "z [rad/s]"]
+    for i in range(0, 3):
+        axarr[i].plot(x, traj._ang_vel_xyz[:, i], style, color=color,
+                      label=label, alpha=alpha)
+        axarr[i].set_ylabel(ylabels[i])
+    axarr[2].set_xlabel(xlabel)
+    if label:
+        # axarr[0].legend(frameon=True)
+        pass
+
+
+def traj_cov(axarr: np.ndarray, traj: trajectory.PoseAuxPath3D, style: str = '-',
+             color: str = 'black', label: str = "", alpha: float = 1.0,
+             start_timestamp: typing.Optional[float] = None) -> None:
+    """
+    plot a path/trajectory based on xyz coordinates into an axis
+    :param axarr: an axis array (for x, y & z)
+                  e.g. from 'fig, axarr = plt.subplots(3)'
+    :param traj: trajectory.PoseAuxPath3D or trajectory.PoseAuxTrajectory3D object
+    :param style: matplotlib line style
+    :param color: matplotlib color
+    :param label: label (for legend)
+    :param alpha: alpha value for transparency
+    :param start_timestamp: optional start time of the reference
+                            (for x-axis alignment)
+    """
+    if len(axarr) != 3:
+        raise PlotException("expected an axis array with 3 subplots - got " +
+                            str(len(axarr)))
+    if isinstance(traj, trajectory.PoseAuxTrajectory3D):
+        if start_timestamp:
+            x = traj.timestamps - start_timestamp
+        else:
+            x = traj.timestamps
+        xlabel = "t [s]"
+    else:
+        x = range(0, len(traj._cov))
+        xlabel = "index"
+    ylabels = ["tr(Cov_a)", "tr(Cov_w)", "sum"]
+    for i in range(0, 3):
+        axarr[i].plot(x, traj._cov[:, i], style, color=color,
                       label=label, alpha=alpha)
         axarr[i].set_ylabel(ylabels[i])
     axarr[2].set_xlabel(xlabel)

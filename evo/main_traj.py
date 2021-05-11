@@ -145,6 +145,12 @@ def parser() -> argparse.ArgumentParser:
     tum_parser.add_argument("traj_files",
                             help="one or multiple trajectory files", nargs='+')
 
+    tum_like_parser = sub_parsers.add_parser(
+        "tum-like", description="%s for TUM-like trajectory files - %s" %
+        (basic_desc, lic), parents=[shared_parser])
+    tum_like_parser.add_argument("traj_files",
+                            help="one or multiple trajectory files", nargs='+')
+
     euroc_parser = sub_parsers.add_parser(
         "euroc", description="%s for EuRoC MAV .csv's - %s" %
         (basic_desc, lic), parents=[shared_parser])
@@ -183,6 +189,14 @@ def load_trajectories(args):
                 traj_file)
         if args.ref:
             ref_traj = file_interface.read_tum_trajectory_file(args.ref)
+    elif args.subcommand == "tum-like":
+        for traj_file in args.traj_files:
+            if traj_file == args.ref:
+                continue
+            trajectories[traj_file] = file_interface.read_tum_like_trajectory_file(
+                traj_file)
+        if args.ref:
+            ref_traj = file_interface.read_tum_like_trajectory_file(args.ref)
     elif args.subcommand == "kitti":
         for pose_file in args.pose_files:
             if pose_file == args.ref:
@@ -401,6 +415,13 @@ def run(args):
             SETTINGS.plot_figsize))
         fig_rpy, axarr_rpy = plt.subplots(3, sharex="col", figsize=tuple(
             SETTINGS.plot_figsize))
+        if args.subcommand == "tum-like":
+            fig_lin_acc, axarr_lin_acc = plt.subplots(3, sharex="col", figsize=tuple(
+                SETTINGS.plot_figsize))
+            fig_ang_vel, axarr_ang_vel = plt.subplots(3, sharex="col", figsize=tuple(
+                SETTINGS.plot_figsize))
+            fig_cov, axarr_cov = plt.subplots(3, sharex="col", figsize=tuple(
+                SETTINGS.plot_figsize))
         fig_traj = plt.figure(figsize=tuple(SETTINGS.plot_figsize))
 
         plot_mode = plot.PlotMode[args.plot_mode]
@@ -433,6 +454,22 @@ def run(args):
                 color=SETTINGS.plot_reference_color, label=short_traj_name,
                 alpha=SETTINGS.plot_reference_alpha,
                 start_timestamp=start_time)
+            if args.subcommand == "tum-like":
+                plot.traj_lin_acc(
+                    axarr_lin_acc, ref_traj, style=SETTINGS.plot_reference_linestyle,
+                    color=SETTINGS.plot_reference_color, label=short_traj_name,
+                    alpha=SETTINGS.plot_reference_alpha,
+                    start_timestamp=start_time)
+                plot.traj_ang_vel(
+                    axarr_ang_vel, ref_traj, style=SETTINGS.plot_reference_linestyle,
+                    color=SETTINGS.plot_reference_color, label=short_traj_name,
+                    alpha=SETTINGS.plot_reference_alpha,
+                    start_timestamp=start_time)
+                plot.traj_cov(
+                    axarr_cov, ref_traj, style=SETTINGS.plot_reference_linestyle,
+                    color=SETTINGS.plot_reference_color, label=short_traj_name,
+                    alpha=SETTINGS.plot_reference_alpha,
+                    start_timestamp=start_time)
 
         if args.ros_map_yaml:
             plot.ros_map(ax_traj, args.ros_map_yaml, plot_mode)
@@ -467,6 +504,19 @@ def run(args):
                           color, short_traj_name,
                           alpha=SETTINGS.plot_trajectory_alpha,
                           start_timestamp=start_time)
+            if args.subcommand == "tum-like":
+                plot.traj_lin_acc(axarr_lin_acc, traj, SETTINGS.plot_reference_linestyle,
+                                  color, short_traj_name,
+                                  alpha=SETTINGS.plot_trajectory_alpha,
+                                  start_timestamp=start_time)
+                plot.traj_ang_vel(axarr_ang_vel, traj, SETTINGS.plot_reference_linestyle,
+                                  color, short_traj_name,
+                                  alpha=SETTINGS.plot_trajectory_alpha,
+                                  start_timestamp=start_time)
+                plot.traj_cov(axarr_cov, traj, SETTINGS.plot_reference_linestyle,
+                              color, short_traj_name,
+                              alpha=SETTINGS.plot_trajectory_alpha,
+                              start_timestamp=start_time)
             if not SETTINGS.plot_usetex:
                 fig_rpy.text(0., 0.005, "euler_angle_sequence: {}".format(
                     SETTINGS.euler_angle_sequence), fontsize=6)
@@ -474,6 +524,10 @@ def run(args):
         plot_collection.add_figure("trajectories", fig_traj)
         plot_collection.add_figure("xyz_view", fig_xyz)
         plot_collection.add_figure("rpy_view", fig_rpy)
+        if args.subcommand == "tum-like":
+            plot_collection.add_figure("lin_acc_view", fig_lin_acc)
+            plot_collection.add_figure("ang_vel_view", fig_ang_vel)
+            plot_collection.add_figure("cov_view", fig_cov)
         if args.plot:
             plot_collection.show()
         if args.save_plot:

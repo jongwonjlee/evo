@@ -21,6 +21,7 @@ along with evo.  If not, see <http://www.gnu.org/licenses/>.
 
 import binascii
 import csv
+from evo.main_traj import print_traj_info
 import io
 import json
 import logging
@@ -34,7 +35,7 @@ from evo import EvoException
 import evo.core.lie_algebra as lie
 import evo.core.transformations as tr
 from evo.core import result
-from evo.core.trajectory import PosePath3D, PoseTrajectory3D
+from evo.core.trajectory import PosePath3D, PoseTrajectory3D, PoseAuxTrajectory3D
 from evo.tools import user
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,34 @@ def write_tum_trajectory_file(file_path, traj: PoseTrajectory3D,
     np.savetxt(file_path, mat, delimiter=" ")
     if isinstance(file_path, str):
         logger.info("Trajectory saved to: " + file_path)
+
+
+def read_tum_like_trajectory_file(file_path) -> PoseAuxTrajectory3D:
+    """
+    parses trajectory file in TUM-like format (timestamp tx ty tz qx qy qz qw ax ay az wx wy wz seq_idx cov_a cov_w cov_sum)
+    :param file_path: the trajectory file path (or file handle)
+    :return: trajectory.PoseTrajectory3D object
+    """
+    raw_mat = csv_read_matrix(file_path, delim=" ", comment_str="#")
+    error_msg = ("TUM-like trajectory files must have 18 entries per row "
+                 "and no trailing delimiter at the end of the rows (space)")
+    if not raw_mat or (len(raw_mat) > 0 and len(raw_mat[0]) != 18):
+        raise FileInterfaceException(error_msg)
+    try:
+        mat = np.array(raw_mat).astype(float)
+    except ValueError:
+        raise FileInterfaceException(error_msg)
+    stamps = mat[:, 0]  # n x 1
+    xyz = mat[:, 1:4]  # n x 3
+    quat = mat[:, 4:8]  # n x 4
+    quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
+    axyz = mat[:, 8:11] # n x 3
+    wxyz = mat[:, 11:14] # n x 3
+    cov  = mat[:, 15:18] # n x 3
+    if not hasattr(file_path, 'read'):  # if not file handle
+        logger.debug("Loaded {} stamps and poses from: {}".format(
+            len(stamps), file_path))
+    return PoseAuxTrajectory3D(xyz, quat, axyz, wxyz, cov, stamps)
 
 
 def read_kitti_poses_file(file_path) -> PosePath3D:
