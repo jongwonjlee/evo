@@ -416,11 +416,11 @@ def run(args):
         fig_rpy, axarr_rpy = plt.subplots(3, sharex="col", figsize=tuple(
             SETTINGS.plot_figsize))
         if args.subcommand == "tum-like":
-            fig_lin_acc, axarr_lin_acc = plt.subplots(3, sharex="col", figsize=tuple(
+            fig_lin_acc, axarr_lin_acc = plt.subplots(1, sharex="col", figsize=tuple(
                 SETTINGS.plot_figsize))
-            fig_ang_vel, axarr_ang_vel = plt.subplots(3, sharex="col", figsize=tuple(
+            fig_ang_vel, axarr_ang_vel = plt.subplots(1, sharex="col", figsize=tuple(
                 SETTINGS.plot_figsize))
-            fig_cov, axarr_cov = plt.subplots(3, sharex="col", figsize=tuple(
+            fig_agg_two, axarr_agg_two = plt.subplots(2, sharex="col", figsize=tuple(
                 SETTINGS.plot_figsize))
         fig_traj = plt.figure(figsize=tuple(SETTINGS.plot_figsize))
 
@@ -465,8 +465,8 @@ def run(args):
                     color=SETTINGS.plot_reference_color, label=short_traj_name,
                     alpha=SETTINGS.plot_reference_alpha,
                     start_timestamp=start_time)
-                plot.traj_cov(
-                    axarr_cov, ref_traj, style=SETTINGS.plot_reference_linestyle,
+                plot.traj_agg_two(
+                    axarr_agg_two, ref_traj, style=SETTINGS.plot_reference_linestyle,
                     color=SETTINGS.plot_reference_color, label=short_traj_name,
                     alpha=SETTINGS.plot_reference_alpha,
                     start_timestamp=start_time)
@@ -513,10 +513,11 @@ def run(args):
                                   color, short_traj_name,
                                   alpha=SETTINGS.plot_trajectory_alpha,
                                   start_timestamp=start_time)
-                plot.traj_cov(axarr_cov, traj, SETTINGS.plot_reference_linestyle,
-                              color, short_traj_name,
-                              alpha=SETTINGS.plot_trajectory_alpha,
-                              start_timestamp=start_time)
+                plot.traj_agg_two(axarr_agg_two, traj, SETTINGS.plot_reference_linestyle,
+                                  color, short_traj_name,
+                                  alpha=SETTINGS.plot_trajectory_alpha,
+                                  start_timestamp=start_time)
+
             if not SETTINGS.plot_usetex:
                 fig_rpy.text(0., 0.005, "euler_angle_sequence: {}".format(
                     SETTINGS.euler_angle_sequence), fontsize=6)
@@ -527,7 +528,7 @@ def run(args):
         if args.subcommand == "tum-like":
             plot_collection.add_figure("lin_acc_view", fig_lin_acc)
             plot_collection.add_figure("ang_vel_view", fig_ang_vel)
-            plot_collection.add_figure("cov_view", fig_cov)
+            plot_collection.add_figure("agg_view", fig_agg_two)
         if args.plot:
             plot_collection.show()
         if args.save_plot:

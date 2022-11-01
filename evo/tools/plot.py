@@ -254,21 +254,21 @@ def prepare_axis(fig: plt.Figure, plot_mode: PlotMode = PlotMode.xy,
         ax = fig.add_subplot(subplot_arg)
         ax.axis("equal")
     if plot_mode in {PlotMode.xy, PlotMode.xz, PlotMode.xyz}:
-        xlabel = "x [m]"
+        xlabel = "$x$ [m]"
     elif plot_mode in {PlotMode.yz, PlotMode.yx}:
-        xlabel = "y [m]"
+        xlabel = "$y$ [m]"
     else:
-        xlabel = "z [m]"
+        xlabel = "$z$ [m]"
     if plot_mode in {PlotMode.xy, PlotMode.zy, PlotMode.xyz}:
-        ylabel = "y [m]"
+        ylabel = "$y$ [m]"
     elif plot_mode in {PlotMode.zx, PlotMode.yx}:
-        ylabel = "x [m]"
+        ylabel = "$x$ [m]"
     else:
-        ylabel = "z [m]"
+        ylabel = "$z$ [m]"
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
     if plot_mode == PlotMode.xyz:
-        ax.set_zlabel('z [m]')
+        ax.set_zlabel('$z$ [m]')
     if SETTINGS.plot_invert_xaxis:
         plt.gca().invert_xaxis()
     if SETTINGS.plot_invert_yaxis:
@@ -491,11 +491,11 @@ def traj_xyz(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
             x = traj.timestamps - start_timestamp
         else:
             x = traj.timestamps
-        xlabel = "t [s]"
+        xlabel = "$t$ [s]"
     else:
         x = range(0, len(traj.positions_xyz))
         xlabel = "index"
-    ylabels = ["x [m]", "y [m]", "z [m]"]
+    ylabels = ["$x$ [m]", "$y$ [m]", "$z$ [m]"]
     for i in range(0, 3):
         axarr[i].plot(x, traj.positions_xyz[:, i], style, color=color,
                       label=label, alpha=alpha)
@@ -530,11 +530,11 @@ def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
             x = traj.timestamps - start_timestamp
         else:
             x = traj.timestamps
-        xlabel = "t [s]"
+        xlabel = "$t$ [s]"
     else:
         x = range(0, len(angles))
         xlabel = "index"
-    ylabels = ["roll [deg]", "pitch [deg]", "yaw [deg]"]
+    ylabels = ["$roll$ [deg]", "$pitch$ [deg]", "$yaw$ [deg]"]
     for i in range(0, 3):
         axarr[i].plot(x, np.rad2deg(angles[:, i]), style, color=color,
                       label=label, alpha=alpha)
@@ -545,90 +545,88 @@ def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
         pass
 
 
-def traj_lin_acc(axarr: np.ndarray, traj: trajectory.PoseAuxPath3D, style: str = '-',
+def traj_lin_acc(ax: mpl.axes, traj: trajectory.PoseAuxPath3D, style: str = '-',
                  color: str = 'black', label: str = "", alpha: float = 1.0,
                  start_timestamp: typing.Optional[float] = None) -> None:
     """
     plot a path/trajectory based on xyz coordinates into an axis
-    :param axarr: an axis array (for x, y & z)
-                  e.g. from 'fig, axarr = plt.subplots(3)'
+    :param ax: a 'single' axis (for x, y & z)
+                  e.g. from 'fig, axarr = plt.subplots(1)'
     :param traj: trajectory.PoseAuxPath3D or trajectory.PoseAuxTrajectory3D object
     :param style: matplotlib line style
     :param color: matplotlib color
-    :param label: label (for legend)
     :param alpha: alpha value for transparency
     :param start_timestamp: optional start time of the reference
                             (for x-axis alignment)
     """
-    if len(axarr) != 3:
-        raise PlotException("expected an axis array with 3 subplots - got " +
-                            str(len(axarr)))
     if isinstance(traj, trajectory.PoseAuxTrajectory3D):
         if start_timestamp:
             x = traj.timestamps - start_timestamp
         else:
             x = traj.timestamps
-        xlabel = "t [s]"
+        xlabel = "$t$ [s]"
     else:
         x = range(0, len(traj._lin_acc_xyz))
         xlabel = "index"
-    ylabels = ["x [m/s^2]", "y [m/s^2]", "z [m/s^2]"]
-    for i in range(0, 3):
-        axarr[i].plot(x, traj._lin_acc_xyz[:, i], style, color=color,
-                      label=label, alpha=alpha)
-        axarr[i].set_ylabel(ylabels[i])
-    axarr[2].set_xlabel(xlabel)
-    if label:
-        # axarr[0].legend(frameon=True)
-        pass
+    
+    ylabels = ['$x$', '$y$', '$z$']
+    colors = ['#377eb8', '#ff7f00', '#4daf4a',
+              '#f781bf', '#a65628', '#984ea3',
+              '#999999', '#e41a1c', '#dede00']
+    styles = ['-', '-', '-']
+    for i, (ylabel, color, style) in enumerate(zip(ylabels, colors, styles)):
+        ax.plot(x, traj._lin_acc_xyz[:, i], style, color=color, label=ylabel, alpha=alpha)
+    
+    ax.legend(frameon=True, loc='upper right')
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("$a$ [m/$s^2$]")
 
 
-def traj_ang_vel(axarr: np.ndarray, traj: trajectory.PoseAuxPath3D, style: str = '-',
+def traj_ang_vel(ax: mpl.axes, traj: trajectory.PoseAuxPath3D, style: str = '-',
                  color: str = 'black', label: str = "", alpha: float = 1.0,
                  start_timestamp: typing.Optional[float] = None) -> None:
     """
     plot a path/trajectory based on xyz coordinates into an axis
-    :param axarr: an axis array (for x, y & z)
-                  e.g. from 'fig, axarr = plt.subplots(3)'
+    :param ax: a 'single' axis (for x, y & z)
+                  e.g. from 'fig, axarr = plt.subplots(1)'
     :param traj: trajectory.PoseAuxPath3D or trajectory.PoseAuxTrajectory3D object
     :param style: matplotlib line style
     :param color: matplotlib color
-    :param label: label (for legend)
     :param alpha: alpha value for transparency
     :param start_timestamp: optional start time of the reference
                             (for x-axis alignment)
     """
-    if len(axarr) != 3:
-        raise PlotException("expected an axis array with 3 subplots - got " +
-                            str(len(axarr)))
     if isinstance(traj, trajectory.PoseAuxTrajectory3D):
         if start_timestamp:
             x = traj.timestamps - start_timestamp
         else:
             x = traj.timestamps
-        xlabel = "t [s]"
+        xlabel = "$t$ [s]"
     else:
         x = range(0, len(traj._ang_vel_xyz))
         xlabel = "index"
-    ylabels = ["x [rad/s]", "y [rad/s]", "z [rad/s]"]
-    for i in range(0, 3):
-        axarr[i].plot(x, traj._ang_vel_xyz[:, i], style, color=color,
-                      label=label, alpha=alpha)
-        axarr[i].set_ylabel(ylabels[i])
-    axarr[2].set_xlabel(xlabel)
-    if label:
-        # axarr[0].legend(frameon=True)
-        pass
+    
+    ylabels = ['$x$', '$y$', '$z$']
+    colors = ['#377eb8', '#ff7f00', '#4daf4a',
+              '#f781bf', '#a65628', '#984ea3',
+              '#999999', '#e41a1c', '#dede00']
+    styles = ['-', '-', '-']
+    for i, (ylabel, color, style) in enumerate(zip(ylabels, colors, styles)):
+        ax.plot(x, traj._ang_vel_xyz[:, i], style, color=color, label=ylabel, alpha=alpha)
+    
+    ax.legend(frameon=True, loc='upper right')
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel("$\omega$ [rad/s]")
 
 
-def traj_cov(axarr: np.ndarray, traj: trajectory.PoseAuxPath3D, style: str = '-',
+def traj_agg_two(axarr: np.ndarray, traj: trajectory.PoseAuxPath3D, style: str = '-',
              color: str = 'black', label: str = "", alpha: float = 1.0,
              start_timestamp: typing.Optional[float] = None) -> None:
     """
-    plot a path/trajectory based on xyz coordinates into an axis
-    :param axarr: an axis array (for x, y & z)
-                  e.g. from 'fig, axarr = plt.subplots(3)'
-    :param traj: trajectory.PoseAuxPath3D or trajectory.PoseAuxTrajectory3D object
+    plot a path/trajectory's (1) linear acceleration and (2) angular velocity into an axis
+    :param axarr: an axis array
+                  e.g. from 'fig, axarr = plt.subplots(2)'
+    :param traj: trajectory.PosePath3D or trajectory.PoseTrajectory3D object
     :param style: matplotlib line style
     :param color: matplotlib color
     :param label: label (for legend)
@@ -636,24 +634,44 @@ def traj_cov(axarr: np.ndarray, traj: trajectory.PoseAuxPath3D, style: str = '-'
     :param start_timestamp: optional start time of the reference
                             (for x-axis alignment)
     """
-    if len(axarr) != 3:
-        raise PlotException("expected an axis array with 3 subplots - got " +
+    if len(axarr) != 2:
+        raise PlotException("expected an axis array with 2 subplots - got " +
                             str(len(axarr)))
     if isinstance(traj, trajectory.PoseAuxTrajectory3D):
         if start_timestamp:
             x = traj.timestamps - start_timestamp
         else:
             x = traj.timestamps
-        xlabel = "t [s]"
+        xlabel = "$t$ [s]"
     else:
-        x = range(0, len(traj._cov))
+        x = range(0, len(traj))
         xlabel = "index"
-    ylabels = ["tr(Cov_a)", "tr(Cov_w)", "sum"]
-    for i in range(0, 3):
-        axarr[i].plot(x, traj._cov[:, i], style, color=color,
-                      label=label, alpha=alpha)
-        axarr[i].set_ylabel(ylabels[i])
-    axarr[2].set_xlabel(xlabel)
+    
+    # plot linear acceleration
+    ylabels = ['$x$', '$y$', '$z$']
+    colors = ['#377eb8', '#ff7f00', '#4daf4a',
+              '#f781bf', '#a65628', '#984ea3',
+              '#999999', '#e41a1c', '#dede00']
+    styles = ['-', '-', '-']
+    for i, (ylabel, color, style) in enumerate(zip(ylabels, colors, styles)):
+        axarr[0].plot(x, traj._lin_acc_xyz[:, i], style, color=color, label=ylabel, alpha=alpha)
+        
+        axarr[0].legend(frameon=True, loc='upper right')
+        # axarr[0].set_xlabel(xlabel)
+        axarr[0].set_ylabel("$a$ [m/$s^2$]")
+
+    # plot angular velocity
+    ylabels = ['$x$', '$y$', '$z$']
+    colors = ['#377eb8', '#ff7f00', '#4daf4a',
+              '#f781bf', '#a65628', '#984ea3',
+              '#999999', '#e41a1c', '#dede00']
+    styles = ['-', '-', '-']
+    for i, (ylabel, color, style) in enumerate(zip(ylabels, colors, styles)):
+        axarr[1].plot(x, traj._ang_vel_xyz[:, i], style, color=color, label=ylabel, alpha=alpha)
+        # axarr[1].legend(frameon=True, loc='upper right')
+        axarr[1].set_xlabel(xlabel)
+        axarr[1].set_ylabel("$\omega$ [rad/s]")
+
     if label:
         # axarr[0].legend(frameon=True)
         pass

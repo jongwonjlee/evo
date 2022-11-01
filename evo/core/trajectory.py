@@ -419,7 +419,7 @@ class Trajectory(PoseTrajectory3D):
 
 class PoseAuxPath3D(PosePath3D, object):
     """
-    path+accel+angvel+cov, no temporal information
+    path+imu truth (linacc, angvel), no temporal information
     also: base class for real trajectory
     """
     def __init__(
@@ -427,7 +427,6 @@ class PoseAuxPath3D(PosePath3D, object):
             orientations_quat_wxyz: typing.Optional[np.ndarray] = None,
             lin_acc_xyz: typing.Optional[np.ndarray] = None,
             ang_vel_xyz: typing.Optional[np.ndarray] = None,
-            cov: typing.Optional[np.ndarray] = None,
             poses_se3: typing.Optional[typing.Sequence[np.ndarray]] = None,
             meta: typing.Optional[dict] = None):
         """
@@ -435,7 +434,6 @@ class PoseAuxPath3D(PosePath3D, object):
         :param orientations_quat_wxyz: nx4 list of quaternions (w,x,y,z format)
         :lin_acc_xyz: nx3 list of x,y,z linear accelerations
         :ang_vel_xyz: nx3 list of x,y,z angular velocities
-        :cov: nx3 list of tr(cov) (accl, gyro, sum)
         :param poses_se3: list of SE(3) poses
         :param meta: optional metadata
         """
@@ -451,8 +449,6 @@ class PoseAuxPath3D(PosePath3D, object):
             self._lin_acc_xyz = np.array(lin_acc_xyz)
         if ang_vel_xyz is not None:
             self._ang_vel_xyz = np.array(ang_vel_xyz)
-        if cov is not None:
-            self._cov = np.array(cov)
         if poses_se3 is not None:
             self._poses_se3 = poses_se3
         self.meta = {} if meta is None else meta
@@ -467,7 +463,6 @@ class PoseAuxTrajectory3D(PoseAuxPath3D, object):
             orientations_quat_wxyz: typing.Optional[np.ndarray] = None,
             lin_acc_xyz: typing.Optional[np.ndarray] = None,
             ang_vel_xyz: typing.Optional[np.ndarray] = None,
-            cov: typing.Optional[np.ndarray] = None,
             timestamps: typing.Optional[np.ndarray] = None,
             poses_se3: typing.Optional[typing.Sequence[np.ndarray]] = None,
             meta: typing.Optional[dict] = None):
@@ -475,7 +470,7 @@ class PoseAuxTrajectory3D(PoseAuxPath3D, object):
         :param timestamps: optional nx1 list of timestamps
         """
         super(PoseAuxTrajectory3D,
-              self).__init__(positions_xyz, orientations_quat_wxyz, lin_acc_xyz, ang_vel_xyz, cov, poses_se3,
+              self).__init__(positions_xyz, orientations_quat_wxyz, lin_acc_xyz, ang_vel_xyz, poses_se3,
                              meta)
         # this is a bit ugly...
         if timestamps is None:
