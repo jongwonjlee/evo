@@ -22,8 +22,11 @@ along with evo.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import argparse
+import datetime
 import logging
 import os
+
+from natsort import natsorted
 
 from evo.tools.settings import SETTINGS
 
@@ -113,6 +116,9 @@ def parser() -> argparse.ArgumentParser:
     output_opts.add_argument("--save_as_bag",
                              help="save trajectories in ROS bag as <date>.bag",
                              action="store_true")
+    output_opts.add_argument("--save_as_bag2",
+                             help="save trajectories in ROS2 bag as <date>",
+                             action="store_true")
     output_opts.add_argument("--logfile", help="Local logfile path.",
                              default=None)
     usability_opts.add_argument("--no_warnings",
@@ -120,6 +126,9 @@ def parser() -> argparse.ArgumentParser:
                                 action="store_true")
     usability_opts.add_argument("-v", "--verbose", help="verbose output",
                                 action="store_true")
+    usability_opts.add_argument(
+        "--show_full_names", help="don't shorten input file paths when "
+        "displaying trajectory names", action="store_true")
     usability_opts.add_argument("--silent", help="don't print any output",
                                 action="store_true")
     usability_opts.add_argument(
@@ -167,6 +176,16 @@ def parser() -> argparse.ArgumentParser:
     bag_parser.add_argument("--all_topics",
                             help="use all compatible topics in the bag",
                             action="store_true")
+
+    bag2_parser = sub_parsers.add_parser(
+        "bag2", description="%s for ROS2 bag files - %s" % (basic_desc, lic),
+        parents=[shared_parser])
+    bag2_parser.add_argument("bag", help="ROS2 bag file")
+    bag2_parser.add_argument("topics", help="multiple trajectory topics",
+                             nargs='*')
+    bag2_parser.add_argument("--all_topics",
+                             help="use all compatible topics in the bag",
+                             action="store_true")
     return main_parser
 
 
@@ -215,18 +234,25 @@ def load_trajectories(args):
                         csv_file)
         if args.ref:
             ref_traj = file_interface.read_euroc_csv_trajectory(args.ref)
-    elif args.subcommand == "bag":
+    elif args.subcommand in ("bag", "bag2"):
         if not (args.topics or args.all_topics):
             die("No topics used - specify topics or set --all_topics.")
         if not os.path.exists(args.bag):
             raise file_interface.FileInterfaceException(
                 "File doesn't exist: {}".format(args.bag))
-        import rosbag
         logger.debug("Opening bag file " + args.bag)
-        bag = rosbag.Bag(args.bag)
+        if args.subcommand == "bag2":
+            from rosbags.rosbag2 import Reader as Rosbag2Reader
+            bag = Rosbag2Reader(args.bag)
+        else:
+            from rosbags.rosbag1 import Reader as Rosbag1Reader
+            bag = Rosbag1Reader(args.bag)
+        bag.open()
         try:
             if args.all_topics:
-                topics = args.topics + file_interface.get_supported_topics(bag)
+                # Note: args.topics can have TF stuff here, so we add it too.
+                topics = args.topics
+                topics += natsorted(file_interface.get_supported_topics(bag))
                 if args.ref in topics:
                     topics.remove(args.ref)
                 if len(topics) == 0:
@@ -245,7 +271,6 @@ def load_trajectories(args):
             bag.close()
     return trajectories, ref_traj
 
-
 # TODO refactor
 def print_traj_info(name, traj, verbose=False, full_check=False):
     from evo.core import trajectory
@@ -254,17 +279,17 @@ def print_traj_info(name, traj, verbose=False, full_check=False):
     logger.info("name:\t" + name)
 
     if verbose or full_check:
-        infos = traj.get_infos()
-        info_str = ""
-        for info, value in sorted(infos.items()):
-            info_str += "\n\t" + info + "\t" + str(value)
-        logger.info("infos:" + info_str)
+        def print_dict(name: str, data: dict):
+            string = ""
+            for key, value in sorted(data.items()):
+                string += "\n\t" + key + "\t" + str(value)
+            logger.info(name + ":" + string)
+
+        print_dict("infos", traj.get_infos())
+        if traj.meta:
+            print_dict("meta", traj.meta)
         if full_check:
-            passed, details = traj.check()
-            check_str = ""
-            for test, result in sorted(details.items()):
-                check_str += "\n\t" + test + "\t" + result
-            logger.info("checks:" + check_str)
+            print_dict("checks", traj.check()[1])
             stat_str = ""
             try:
                 stats = traj.get_statistics()
@@ -282,7 +307,7 @@ def print_traj_info(name, traj, verbose=False, full_check=False):
 
 
 def to_filestem(name: str, args: argparse.Namespace) -> str:
-    if args.subcommand == "bag":
+    if args.subcommand in ("bag", "bag2"):
         if name.startswith('/'):
             name = name[1:]
         name = name.replace(':', '/')  # TF ID
@@ -291,14 +316,14 @@ def to_filestem(name: str, args: argparse.Namespace) -> str:
 
 
 def to_topic_name(name: str, args: argparse.Namespace) -> str:
-    if args.subcommand == "bag":
+    if args.subcommand in ("bag", "bag2"):
         return name.replace(':', '/')
     return '/' + os.path.splitext(os.path.basename(name))[0].replace(' ', '_')
 
 
 def to_compact_name(name: str, args: argparse.Namespace,
                     latex_friendly=False) -> str:
-    if not args.subcommand == "bag":
+    if not args.show_full_names and args.subcommand not in ("bag", "bag2"):
         # /some/super/long/path/that/nobody/cares/about/traj.txt  ->  traj
         name = os.path.splitext(os.path.basename(name))[0]
     if latex_friendly:
@@ -335,22 +360,6 @@ def run(args):
         trajectories = {
             "merged_trajectory": trajectory.merge(trajectories.values())
         }
-
-    if args.transform_left or args.transform_right:
-        tf_type = "left" if args.transform_left else "right"
-        tf_path = args.transform_left \
-                if args.transform_left else args.transform_right
-        transform = file_interface.load_transform_json(tf_path)
-        logger.debug(SEP)
-        if not lie.is_se3(transform):
-            logger.warning("Not a valid SE(3) transformation!")
-        if args.invert_transform:
-            transform = lie.se3_inverse(transform)
-        logger.debug("Applying a {}-multiplicative transformation:\n{}".format(
-            tf_type, transform))
-        for traj in trajectories.values():
-            traj.transform(transform, right_mul=args.transform_right,
-                           propagate=args.propagate_transform)
 
     if args.t_offset:
         logger.debug(SEP)
@@ -396,6 +405,22 @@ def run(args):
                 trajectories[name].align_origin(ref_traj_tmp)
             if SETTINGS.plot_pose_correspondences:
                 synced_refs[name] = ref_traj_tmp
+
+    if args.transform_left or args.transform_right:
+        tf_type = "left" if args.transform_left else "right"
+        tf_path = args.transform_left \
+                if args.transform_left else args.transform_right
+        transform = file_interface.load_transform_json(tf_path)
+        logger.debug(SEP)
+        if not lie.is_se3(transform):
+            logger.warning("Not a valid SE(3) transformation!")
+        if args.invert_transform:
+            transform = lie.se3_inverse(transform)
+        logger.debug("Applying a {}-multiplicative transformation:\n{}".format(
+            tf_type, transform))
+        for traj in trajectories.values():
+            traj.transform(transform, right_mul=args.transform_right,
+                           propagate=args.propagate_transform)
 
     for name, traj in trajectories.items():
         print_traj_info(
@@ -443,7 +468,7 @@ def run(args):
                       label=short_traj_name,
                       alpha=SETTINGS.plot_reference_alpha)
             plot.draw_coordinate_axes(ax_traj, ref_traj, plot_mode,
-                                      SETTINGS.plot_axis_marker_scale)
+                                      SETTINGS.plot_reference_axis_marker_scale)
             plot.traj_xyz(
                 axarr_xyz, ref_traj, style=SETTINGS.plot_reference_linestyle,
                 color=SETTINGS.plot_reference_color, label=short_traj_name,
@@ -454,25 +479,14 @@ def run(args):
                 color=SETTINGS.plot_reference_color, label=short_traj_name,
                 alpha=SETTINGS.plot_reference_alpha,
                 start_timestamp=start_time)
-            if args.subcommand == "tum-like":
-                plot.traj_lin_acc(
-                    axarr_lin_acc, ref_traj, style=SETTINGS.plot_reference_linestyle,
-                    color=SETTINGS.plot_reference_color, label=short_traj_name,
-                    alpha=SETTINGS.plot_reference_alpha,
-                    start_timestamp=start_time)
-                plot.traj_ang_vel(
-                    axarr_ang_vel, ref_traj, style=SETTINGS.plot_reference_linestyle,
-                    color=SETTINGS.plot_reference_color, label=short_traj_name,
-                    alpha=SETTINGS.plot_reference_alpha,
-                    start_timestamp=start_time)
-                plot.traj_agg_two(
-                    axarr_agg_two, ref_traj, style=SETTINGS.plot_reference_linestyle,
-                    color=SETTINGS.plot_reference_color, label=short_traj_name,
-                    alpha=SETTINGS.plot_reference_alpha,
-                    start_timestamp=start_time)
-
-        if args.ros_map_yaml:
-            plot.ros_map(ax_traj, args.ros_map_yaml, plot_mode)
+        elif args.plot_relative_time:
+            # Use lower bound timestamp as the 0 time if there's no reference.
+            if len(trajectories) > 1:
+                logger.warning("--plot_relative_time is set for multiple "
+                               "trajectories without --ref. "
+                               "Using the lowest timestamp as zero time.")
+            start_time = min(traj.timestamps[0]
+                             for _, traj in trajectories.items())
 
         cmap_colors = None
         if SETTINGS.plot_multi_cmap.lower() != "none":
@@ -522,6 +536,9 @@ def run(args):
                 fig_rpy.text(0., 0.005, "euler_angle_sequence: {}".format(
                     SETTINGS.euler_angle_sequence), fontsize=6)
 
+        if args.ros_map_yaml:
+            plot.ros_map(ax_traj, args.ros_map_yaml, plot_mode)
+
         plot_collection.add_figure("trajectories", fig_traj)
         plot_collection.add_figure("xyz_view", fig_xyz)
         plot_collection.add_figure("rpy_view", fig_rpy)
@@ -560,29 +577,37 @@ def run(args):
             dest = to_filestem(args.ref, args) + ".kitti"
             file_interface.write_kitti_poses_file(
                 dest, ref_traj, confirm_overwrite=not args.no_warnings)
-    if args.save_as_bag:
-        import datetime
-        import rosbag
-        dest_bag_path = str(
-            datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")) + ".bag"
-        logger.info(SEP)
-        logger.info("Saving trajectories to " + dest_bag_path + "...")
-        bag = rosbag.Bag(dest_bag_path, 'w')
-        try:
-            for name, traj in trajectories.items():
-                dest_topic = to_topic_name(name, args)
-                frame_id = traj.meta[
-                    "frame_id"] if "frame_id" in traj.meta else ""
-                file_interface.write_bag_trajectory(bag, traj, dest_topic,
-                                                    frame_id)
-            if args.ref:
-                dest_topic = to_topic_name(args.ref, args)
-                frame_id = ref_traj.meta[
-                    "frame_id"] if "frame_id" in ref_traj.meta else ""
-                file_interface.write_bag_trajectory(bag, ref_traj, dest_topic,
-                                                    frame_id)
-        finally:
-            bag.close()
+    if args.save_as_bag or args.save_as_bag2:
+        from rosbags.rosbag1 import Writer as Rosbag1Writer
+        from rosbags.rosbag2 import Writer as Rosbag2Writer
+        writers = []
+        if args.save_as_bag:
+            dest_bag_path = str(
+                datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")) + ".bag"
+            writers.append(Rosbag1Writer(dest_bag_path))
+        if args.save_as_bag2:
+            dest_bag_path = str(
+                datetime.datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+            writers.append(Rosbag2Writer(dest_bag_path))
+        for writer in writers:
+            logger.info(SEP)
+            logger.info("Saving trajectories to " + str(writer.path) + "...")
+            try:
+                writer.open()
+                for name, traj in trajectories.items():
+                    dest_topic = to_topic_name(name, args)
+                    frame_id = traj.meta[
+                        "frame_id"] if "frame_id" in traj.meta else ""
+                    file_interface.write_bag_trajectory(writer, traj,
+                                                        dest_topic, frame_id)
+                if args.ref:
+                    dest_topic = to_topic_name(args.ref, args)
+                    frame_id = ref_traj.meta[
+                        "frame_id"] if "frame_id" in ref_traj.meta else ""
+                    file_interface.write_bag_trajectory(writer, ref_traj,
+                                                        dest_topic, frame_id)
+            finally:
+                writer.close()
 
     if args.save_table:
         from evo.tools import pandas_bridge

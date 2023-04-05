@@ -19,6 +19,7 @@ You should have received a copy of the GNU General Public License
 along with evo.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import copy
 import os
 import collections
 import logging
@@ -36,7 +37,7 @@ import mpl_toolkits.mplot3d.art3d as art3d
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.backend_bases import FigureCanvasBase
 from matplotlib.collections import LineCollection
-from matplotlib.transforms import Affine2D
+from matplotlib.transforms import Affine2D, Bbox
 
 import numpy as np
 import seaborn as sns
@@ -76,6 +77,12 @@ class PlotMode(Enum):
     zx = "zx"
     zy = "zy"
     xyz = "xyz"
+
+
+class Viewport(Enum):
+    update = "update"
+    keep_unchanged = "keep_unchanged"
+    zoom_to_map = "zoom_to_map"
 
 
 class PlotCollection:
@@ -183,6 +190,10 @@ class PlotCollection:
         else:
             plt.show()
 
+    def close(self) -> None:
+        for name, fig in self.figures.items():
+            plt.close(fig)
+
     def serialize(self, dest: str, confirm_overwrite: bool = True) -> None:
         logger.debug("Serializing PlotCollection to " + dest + "...")
         if confirm_overwrite and not user.check_and_confirm_overwrite(dest):
@@ -214,11 +225,15 @@ class PlotCollection:
                 logger.info("Plot saved to " + dest)
 
 
-def set_aspect_equal_3d(ax: plt.Axes) -> None:
+def set_aspect_equal(ax: plt.Axes) -> None:
     """
     kudos to https://stackoverflow.com/a/35126679
     :param ax: matplotlib 3D axes object
     """
+    if not isinstance(ax, Axes3D):
+        ax.set_aspect("equal")
+        return
+
     xlim = ax.get_xlim3d()
     ylim = ax.get_ylim3d()
     zlim = ax.get_zlim3d()
@@ -252,7 +267,6 @@ def prepare_axis(fig: plt.Figure, plot_mode: PlotMode = PlotMode.xy,
         ax = fig.add_subplot(subplot_arg, projection="3d")
     else:
         ax = fig.add_subplot(subplot_arg)
-        ax.axis("equal")
     if plot_mode in {PlotMode.xy, PlotMode.xz, PlotMode.xyz}:
         xlabel = "$x$ [m]"
     elif plot_mode in {PlotMode.yz, PlotMode.yx}:
@@ -273,6 +287,8 @@ def prepare_axis(fig: plt.Figure, plot_mode: PlotMode = PlotMode.xy,
         plt.gca().invert_xaxis()
     if SETTINGS.plot_invert_yaxis:
         plt.gca().invert_yaxis()
+    if not SETTINGS.plot_show_axis:
+        ax.set_axis_off()
     return ax
 
 
@@ -319,20 +335,19 @@ def traj(ax: plt.Axes, plot_mode: PlotMode, traj: trajectory.PosePath3D,
     if plot_mode == PlotMode.xyz:
         z = traj.positions_xyz[:, z_idx]
         ax.plot(x, y, z, style, color=color, label=label, alpha=alpha)
-        if SETTINGS.plot_xyz_realistic:
-            set_aspect_equal_3d(ax)
     else:
         ax.plot(x, y, style, color=color, label=label, alpha=alpha)
-    if label:
-        # ax.legend(frameon=True)
-        pass
+    if SETTINGS.plot_xyz_realistic:
+        set_aspect_equal(ax)
+    if label and SETTINGS.plot_show_legend:
+        ax.legend(frameon=True)
 
 
 def colored_line_collection(
     xyz: np.ndarray, colors: ListOrArray, plot_mode: PlotMode = PlotMode.xy,
     linestyles: str = "solid", step: int = 1, alpha: float = 1.
 ) -> typing.Union[LineCollection, art3d.LineCollection]:
-    if len(xyz) / step != len(colors):
+    if step > 1 and len(xyz) / step != len(colors):
         raise PlotException(
             "color values don't have correct length: %d vs. %d" %
             (len(xyz) / step, len(colors)))
@@ -384,12 +399,13 @@ def traj_colormap(ax: plt.Axes, traj: trajectory.PosePath3D,
     if plot_mode == PlotMode.xyz:
         ax.set_zlim(np.amin(traj.positions_xyz[:, 2]),
                     np.amax(traj.positions_xyz[:, 2]))
-        if SETTINGS.plot_xyz_realistic:
-            set_aspect_equal_3d(ax)
+    if SETTINGS.plot_xyz_realistic:
+        set_aspect_equal(ax)
     if fig is None:
         fig = plt.gcf()
     cbar = fig.colorbar(
-        mapper, ticks=[min_map, (max_map - (max_map - min_map) / 2), max_map])
+        mapper, ticks=[min_map, (max_map - (max_map - min_map) / 2), max_map],
+        ax=ax)
     cbar.ax.set_yticklabels([
         "{0:0.3f}".format(min_map),
         "{0:0.3f}".format(max_map - (max_map - min_map) / 2),
@@ -493,7 +509,7 @@ def traj_xyz(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
             x = traj.timestamps
         xlabel = "$t$ [s]"
     else:
-        x = range(0, len(traj.positions_xyz))
+        x = np.arange(0., len(traj.positions_xyz))
         xlabel = "index"
     ylabels = ["$x$ [m]", "$y$ [m]", "$z$ [m]"]
     for i in range(0, 3):
@@ -532,7 +548,7 @@ def traj_rpy(axarr: np.ndarray, traj: trajectory.PosePath3D, style: str = '-',
             x = traj.timestamps
         xlabel = "$t$ [s]"
     else:
-        x = range(0, len(angles))
+        x = np.arange(0., len(angles))
         xlabel = "index"
     ylabels = ["$roll$ [deg]", "$pitch$ [deg]", "$yaw$ [deg]"]
     for i in range(0, 3):
@@ -720,11 +736,11 @@ def trajectories(fig: plt.Figure, trajectories: typing.Union[
 def error_array(ax: plt.Axes, err_array: ListOrArray,
                 x_array: typing.Optional[ListOrArray] = None,
                 statistics: typing.Optional[typing.Dict[str, float]] = None,
-                threshold: float = None, cumulative: bool = False,
-                color: str = 'grey', name: str = "error", title: str = "",
-                xlabel: str = "index", ylabel: typing.Optional[str] = None,
-                subplot_arg: int = 111, linestyle: str = "-",
-                marker: typing.Optional[str] = None):
+                threshold: typing.Optional[float] = None,
+                cumulative: bool = False, color: str = 'grey',
+                name: str = "error", title: str = "", xlabel: str = "index",
+                ylabel: typing.Optional[str] = None, subplot_arg: int = 111,
+                linestyle: str = "-", marker: typing.Optional[str] = None):
     """
     high-level function for plotting raw error values of a metric
     :param fig: matplotlib axes
@@ -774,10 +790,13 @@ def error_array(ax: plt.Axes, err_array: ListOrArray,
     plt.legend(frameon=True)
 
 
-def ros_map(ax: plt.Axes, yaml_path: str, plot_mode: PlotMode,
-            cmap: str = "Greys_r",
-            mask_unknown_value: int = SETTINGS.ros_map_unknown_cell_value,
-            alpha: float = SETTINGS.ros_map_alpha_value) -> None:
+def ros_map(
+    ax: plt.Axes, yaml_path: str, plot_mode: PlotMode,
+    cmap: str = SETTINGS.ros_map_cmap,
+    mask_unknown_value: int = SETTINGS.ros_map_unknown_cell_value,
+    alpha: float = SETTINGS.ros_map_alpha_value,
+    viewport: Viewport = Viewport(SETTINGS.ros_map_viewport)
+) -> None:
     """
     Inserts an image of an 2D ROS map into the plot axis.
     See: http://wiki.ros.org/map_server#Map_format
@@ -785,9 +804,11 @@ def ros_map(ax: plt.Axes, yaml_path: str, plot_mode: PlotMode,
     :param plot_mode: a 2D PlotMode
     :param yaml_path: yaml file that contains the metadata of the map image
     :param cmap: color map used to map scalar data to colors
+                 (only for single channel image)
     :param mask_unknown_value: uint8 value that represents unknown cells.
                                If specified, these cells will be masked out.
                                If set to None or False, nothing will be masked.
+    :param viewport: Viewport defining how the axis limits will be changed
     """
     import yaml
 
@@ -806,14 +827,41 @@ def ros_map(ax: plt.Axes, yaml_path: str, plot_mode: PlotMode,
     if not os.path.isabs(image_path):
         image_path = os.path.join(os.path.dirname(yaml_path), image_path)
     image = plt.imread(image_path)
+
     if mask_unknown_value:
-        image = np.ma.masked_where(image == np.uint8(mask_unknown_value),
-                                   image)
+        # Support masking with single channel or RGB images, 8bit or normalized
+        # float. For RGB all channels must be equal to mask_unknown_value.
+        n_channels = image.shape[2] if len(image.shape) > 2 else 1
+        if image.dtype == np.uint8:
+            mask_unknown_value_rgb = np.array([mask_unknown_value] * 3,
+                                              dtype=np.uint8)
+        elif image.dtype == np.float32:
+            mask_unknown_value_rgb = np.array([mask_unknown_value / 255.0] * 3,
+                                              dtype=np.float32)
+        if n_channels == 1:
+            image = np.ma.masked_where(image == mask_unknown_value_rgb[0],
+                                       image)
+        elif n_channels == 3:
+            # imshow ignores masked RGB regions for some reason,
+            # add an alpha channel instead.
+            # https://stackoverflow.com/questions/60561680
+            mask = np.all(image == mask_unknown_value_rgb, 2)
+            max_alpha = 255 if image.dtype == np.uint8 else 1.
+            image = np.dstack((image, (~mask).astype(image.dtype) * max_alpha))
+        else:
+            # E.g. if there's already an alpha channel it doesn't make sense.
+            logger.warning("masking unknown map cells is not supported "
+                           "with {}-channel {} pixels".format(
+                               n_channels, image.dtype))
+
+    original_bbox = copy.deepcopy(ax.dataLim)
 
     # Squeeze extent to reflect metric coordinates.
     resolution = metadata["resolution"]
     n_rows, n_cols = image.shape[x_idx], image.shape[y_idx]
-    extent = [0, n_cols * resolution, 0, n_rows * resolution]
+    metric_width = n_cols * resolution
+    metric_height = n_rows * resolution
+    extent = [0, metric_width, 0, metric_height]
     if plot_mode == PlotMode.yx:
         image = np.rot90(image)
         image = np.fliplr(image)
@@ -830,6 +878,21 @@ def ros_map(ax: plt.Axes, yaml_path: str, plot_mode: PlotMode,
         angle *= -1
     map_to_pixel_origin.rotate(angle)
     ax_image.set_transform(map_to_pixel_origin + ax.transData)
+
+    if viewport in (viewport.update, viewport.zoom_to_map):
+        bbox = map_to_pixel_origin.transform_bbox(
+            Bbox(np.array([[0, 0], [metric_width, metric_height]])))
+        if viewport == viewport.update:
+            # Data limits aren't updated properly after the transformation by
+            # ax.relim() / ax.autoscale_view(), so we have to do it manually...
+            # Not ideal, but it allows to avoid a clipping viewport.
+            # TODO: check if this is a bug in matplotlib.
+            ax.dataLim = Bbox.union([original_bbox, bbox])
+        elif viewport == viewport.zoom_to_map:
+            ax.dataLim = bbox
+    elif viewport == viewport.keep_unchanged:
+        ax.dataLim = original_bbox
+    ax.autoscale_view()
 
     # Initially flipped axes are lost for mysterious reasons...
     if SETTINGS.plot_invert_xaxis:

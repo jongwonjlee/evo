@@ -119,6 +119,11 @@ DEFAULT_SETTINGS_DICT_DOC = {
         "--",
         "matplotlib linestyle of reference trajectories in plots."
     ),
+    "plot_reference_axis_marker_scale": (
+        0.,
+        "Scaling parameter of pose coordinate frame markers of reference trajectories. "
+        + "0 will draw nothing."
+    ),
     "plot_seaborn_palette": (
         "deep6",
         "Default color cycle, taken from a palette of the seaborn package.\n"
@@ -129,6 +134,14 @@ DEFAULT_SETTINGS_DICT_DOC = {
         "darkgrid",
         "Defines the plot background/grid.\n"
         + "Options: 'whitegrid', 'darkgrid', 'white' or 'dark'."
+    ),
+    "plot_show_axis": (
+        True,
+        "Enables / disables the plot axis in trajectory plots."
+    ),
+    "plot_show_legend": (
+        True,
+        "Enables / disables the legend in trajectory plots."
     ),
     "plot_split": (
         False,
@@ -156,11 +169,16 @@ DEFAULT_SETTINGS_DICT_DOC = {
     ),
     "plot_xyz_realistic": (
         True,
-        "Equal axes ratio in 'xyz' plot mode for realistic trajectory plots."
+        "Equal axes ratio for realistic trajectory plots.\n"
+        "Turning it off allows to stretch the plot without keeping the ratio."
     ),
     "ros_map_alpha_value": (
         1.0,
         "Alpha value for blending ROS map image slices."
+    ),
+    "ros_map_cmap": (
+        "Greys_r",
+        "matplotlib colormap for coloring ROS map cells."
     ),
     "ros_map_unknown_cell_value": (
         205,
@@ -168,6 +186,11 @@ DEFAULT_SETTINGS_DICT_DOC = {
         "Used to remove unknown cell pixels when a ROS map is added to a plot."
         "\nmap_saver uses 205, other tools might not.\n"
         "(for example, Cartographer uses 128 for images of probability grids)"
+    ),
+    "ros_map_viewport": (
+        "keep_unchanged",
+        "How to change the plot axis limits (viewport) when plotting a map.\n"
+        "One of the following options: keep_unchanged, zoom_to_map, update"
     ),
     "save_traj_in_zip": (
         False,

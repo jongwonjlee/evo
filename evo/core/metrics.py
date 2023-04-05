@@ -63,6 +63,8 @@ class PoseRelation(Enum):
     rotation_part = "rotation part"
     rotation_angle_rad = "rotation angle in radians"
     rotation_angle_deg = "rotation angle in degrees"
+    point_distance = "point distance"
+    point_distance_error_ratio = "point distance error ratio"
 
 
 class Unit(Enum):
@@ -72,6 +74,7 @@ class Unit(Enum):
     degrees = "deg"
     radians = "rad"
     frames = "frames"
+    percent = "%"  # used like a unit for display purposes
 
 
 class VelUnit(Enum):
@@ -195,7 +198,8 @@ class RPE(PE):
     def __init__(self,
                  pose_relation: PoseRelation = PoseRelation.translation_part,
                  delta: float = 1.0, delta_unit: Unit = Unit.frames,
-                 rel_delta_tol: float = 0.1, all_pairs: bool = False):
+                 rel_delta_tol: float = 0.1, all_pairs: bool = False,
+                 pairs_from_reference: bool = False):
         if delta < 0:
             raise MetricsException("delta must be a positive number")
         if delta_unit == Unit.frames and not isinstance(delta, int) \
@@ -207,11 +211,15 @@ class RPE(PE):
         self.rel_delta_tol = rel_delta_tol
         self.pose_relation = pose_relation
         self.all_pairs = all_pairs
+        self.pairs_from_reference = pairs_from_reference
         self.E: typing.List[np.ndarray] = []
         self.error = np.array([])
         self.delta_ids: typing.List[int] = []
-        if pose_relation == PoseRelation.translation_part:
+        if pose_relation in (PoseRelation.translation_part,
+                             PoseRelation.point_distance):
             self.unit = Unit.meters
+        elif pose_relation == PoseRelation.point_distance_error_ratio:
+            self.unit = Unit.percent
         elif pose_relation == PoseRelation.rotation_angle_deg:
             self.unit = Unit.degrees
         elif pose_relation == PoseRelation.rotation_angle_rad:
@@ -262,18 +270,44 @@ class RPE(PE):
             raise MetricsException(
                 "trajectories must have same number of poses")
 
-        id_pairs = id_pairs_from_delta(traj_est.poses_se3, self.delta,
-                                       self.delta_unit, self.rel_delta_tol,
-                                       all_pairs=self.all_pairs)
+        id_pairs = id_pairs_from_delta(
+            (traj_ref.poses_se3
+             if self.pairs_from_reference else traj_est.poses_se3), self.delta,
+            self.delta_unit, self.rel_delta_tol, all_pairs=self.all_pairs)
 
         # Store flat id list e.g. for plotting.
         self.delta_ids = [j for i, j in id_pairs]
 
-        self.E = [
-            self.rpe_base(traj_ref.poses_se3[i], traj_ref.poses_se3[j],
-                          traj_est.poses_se3[i], traj_est.poses_se3[j])
-            for i, j in id_pairs
-        ]
+        if self.pose_relation in (PoseRelation.point_distance,
+                                  PoseRelation.point_distance_error_ratio):
+            # Only compares the magnitude of the point distance instead of
+            # doing the full vector comparison of 'translation_part'.
+            # Can be directly calculated on positions instead of full poses.
+            ref_distances = np.array([
+                np.linalg.norm(traj_ref.positions_xyz[i] -
+                               traj_ref.positions_xyz[j]) for i, j in id_pairs
+            ])
+            est_distances = np.array([
+                np.linalg.norm(traj_est.positions_xyz[i] -
+                               traj_est.positions_xyz[j]) for i, j in id_pairs
+            ])
+            self.error = np.abs(ref_distances - est_distances)
+            if self.pose_relation == PoseRelation.point_distance_error_ratio:
+                nonzero = ref_distances.nonzero()[0]
+                if nonzero.size != ref_distances.size:
+                    logger.warning(
+                        f"Ignoring {ref_distances.size - nonzero.size} zero "
+                        "divisions in ratio calculations.")
+                    self.delta_ids = [self.delta_ids[i] for i in nonzero]
+                self.error = np.divide(self.error[nonzero],
+                                       ref_distances[nonzero]) * 100
+        else:
+            # All other pose relations require the full pose error.
+            self.E = [
+                self.rpe_base(traj_ref.poses_se3[i], traj_ref.poses_se3[j],
+                              traj_est.poses_se3[i], traj_est.poses_se3[j])
+                for i, j in id_pairs
+            ]
 
         logger.debug(
             "Compared {} relative pose pairs, delta = {} ({}) {}".format(
@@ -284,7 +318,11 @@ class RPE(PE):
         logger.debug("Calculating RPE for {} pose relation...".format(
             self.pose_relation.value))
 
-        if self.pose_relation == PoseRelation.translation_part:
+        if self.pose_relation in (PoseRelation.point_distance,
+                                  PoseRelation.point_distance_error_ratio):
+            # Already computed, see above.
+            pass
+        elif self.pose_relation == PoseRelation.translation_part:
             self.error = [np.linalg.norm(E_i[:3, 3]) for E_i in self.E]
         elif self.pose_relation == PoseRelation.rotation_part:
             # ideal: rot(E_i) = 3x3 identity
@@ -298,11 +336,10 @@ class RPE(PE):
                 [np.linalg.norm(E_i - np.eye(4)) for E_i in self.E])
         elif self.pose_relation == PoseRelation.rotation_angle_rad:
             self.error = np.array(
-                [abs(lie.so3_log(E_i[:3, :3])) for E_i in self.E])
+                [abs(lie.so3_log_angle(E_i[:3, :3])) for E_i in self.E])
         elif self.pose_relation == PoseRelation.rotation_angle_deg:
-            self.error = np.array([
-                abs(lie.so3_log(E_i[:3, :3])) * 180 / np.pi for E_i in self.E
-            ])
+            self.error = np.array(
+                [abs(lie.so3_log_angle(E_i[:3, :3], True)) for E_i in self.E])
         else:
             raise MetricsException("unsupported pose_relation: ",
                                    self.pose_relation)
@@ -320,7 +357,8 @@ class APE(PE):
         self.error = np.array([])
         self.error_stat = np.array([])
         self.mask = np.array([])
-        if pose_relation == PoseRelation.translation_part:
+        if pose_relation in (PoseRelation.translation_part,
+                             PoseRelation.point_distance):
             self.unit = Unit.meters
         elif pose_relation == PoseRelation.rotation_angle_deg:
             self.unit = Unit.degrees
@@ -361,8 +399,10 @@ class APE(PE):
             raise MetricsException(
                 "trajectories must have same number of poses")
 
-        if self.pose_relation == PoseRelation.translation_part:
-            # don't require full SE(3) matrices for faster computation
+        if self.pose_relation in (PoseRelation.translation_part,
+                                  PoseRelation.point_distance):
+            # Translation part of APE is equivalent to distance between poses,
+            # we don't require full SE(3) matrices for faster computation.
             self.E = traj_est.positions_xyz - traj_ref.positions_xyz
         else:
             self.E = [
@@ -373,7 +413,8 @@ class APE(PE):
         logger.debug("Calculating APE for {} pose relation...".format(
             (self.pose_relation.value)))
 
-        if self.pose_relation == PoseRelation.translation_part:
+        if self.pose_relation in (PoseRelation.translation_part,
+                                  PoseRelation.point_distance):
             # E is an array of position vectors only in this case
             self.error = np.array([np.linalg.norm(E_i) for E_i in self.E])
         elif self.pose_relation == PoseRelation.rotation_part:
@@ -386,11 +427,10 @@ class APE(PE):
                 [np.linalg.norm(E_i - np.eye(4)) for E_i in self.E])
         elif self.pose_relation == PoseRelation.rotation_angle_rad:
             self.error = np.array(
-                [abs(lie.so3_log(E_i[:3, :3])) for E_i in self.E])
+                [abs(lie.so3_log_angle(E_i[:3, :3])) for E_i in self.E])
         elif self.pose_relation == PoseRelation.rotation_angle_deg:
-            self.error = np.array([
-                abs(lie.so3_log(E_i[:3, :3])) * 180 / np.pi for E_i in self.E
-            ])
+            self.error = np.array(
+                [abs(lie.so3_log_angle(E_i[:3, :3], True)) for E_i in self.E])
         else:
             raise MetricsException("unsupported pose_relation")
 

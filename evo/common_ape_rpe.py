@@ -51,15 +51,20 @@ def load_trajectories(
         traj_ref = file_interface.read_euroc_csv_trajectory(args.state_gt_csv)
         traj_est = file_interface.read_tum_trajectory_file(args.est_file)
         ref_name, est_name = args.state_gt_csv, args.est_file
-    elif args.subcommand == "bag":
+    elif args.subcommand in ("bag", "bag2"):
         import os
         logger.debug("Opening bag file " + args.bag)
         if not os.path.exists(args.bag):
             raise file_interface.FileInterfaceException(
                 "File doesn't exist: {}".format(args.bag))
-        import rosbag
-        bag = rosbag.Bag(args.bag, 'r')
+        if args.subcommand == "bag2":
+            from rosbags.rosbag2 import Reader as Rosbag2Reader
+            bag = Rosbag2Reader(args.bag)  # type: ignore
+        else:
+            from rosbags.rosbag1 import Reader as Rosbag1Reader
+            bag = Rosbag1Reader(args.bag)  # type: ignore
         try:
+            bag.open()
             traj_ref = file_interface.read_bag_trajectory(bag, args.ref_topic)
             traj_est = file_interface.read_bag_trajectory(bag, args.est_topic)
             ref_name, est_name = args.ref_topic, args.est_topic
@@ -82,6 +87,10 @@ def get_pose_relation(args: argparse.Namespace) -> PoseRelation:
         pose_relation = PoseRelation.rotation_angle_deg
     elif args.pose_relation == "angle_rad":
         pose_relation = PoseRelation.rotation_angle_rad
+    elif args.pose_relation == "point_distance":
+        pose_relation = PoseRelation.point_distance
+    elif args.pose_relation == "point_distance_error_ratio":
+        pose_relation = PoseRelation.point_distance_error_ratio
     return pose_relation
 
 
@@ -113,31 +122,36 @@ def plot_result(args: argparse.Namespace, result: Result, traj_ref: PosePath3D,
 
     # Plot the raw metric values.
     fig1 = plt.figure(figsize=SETTINGS.plot_figsize)
-    if "seconds_from_start" in result.np_arrays:
-        seconds_from_start = result.np_arrays["seconds_from_start"]
+    if (args.plot_x_dimension == "distances"
+            and "distances_from_start" in result.np_arrays):
+        x_array = result.np_arrays["distances_from_start"]
+        x_label = "$d$ (m)"
+    elif (args.plot_x_dimension == "seconds"
+          and "seconds_from_start" in result.np_arrays):
+        x_array = result.np_arrays["seconds_from_start"]
+        x_label = "$t$ (s)"
     else:
-        seconds_from_start = None
+        x_array = None
+        x_label = "index"
 
     plot.error_array(
-        fig1.gca(), result.np_arrays["error_array"],
-        x_array=seconds_from_start, statistics={
+        fig1.gca(), result.np_arrays["error_array"], x_array=x_array,
+        statistics={
             s: result.stats[s]
             for s in SETTINGS.plot_statistics if s not in ("min", "max")
         }, name=result.info["label"], title=result.info["title"],
-        xlabel="$t$ (s)" if seconds_from_start is not None else "index")
+        xlabel=x_label)
 
     # Plot the values color-mapped onto the trajectory.
     fig2 = plt.figure(figsize=SETTINGS.plot_figsize)
     ax = plot.prepare_axis(fig2, plot_mode)
-    if args.ros_map_yaml:
-        plot.ros_map(ax, args.ros_map_yaml, plot_mode)
 
     plot.traj(ax, plot_mode, traj_ref_full if traj_ref_full else traj_ref,
               style=SETTINGS.plot_reference_linestyle,
               color=SETTINGS.plot_reference_color, label='reference',
               alpha=SETTINGS.plot_reference_alpha)
     plot.draw_coordinate_axes(ax, traj_ref, plot_mode,
-                              SETTINGS.plot_axis_marker_scale)
+                              SETTINGS.plot_reference_axis_marker_scale)
 
     if args.plot_colormap_min is None:
         args.plot_colormap_min = result.stats["min"]
@@ -150,9 +164,11 @@ def plot_result(args: argparse.Namespace, result: Result, traj_ref: PosePath3D,
     plot.traj_colormap(ax, traj_est, result.np_arrays["error_array"],
                        plot_mode, min_map=args.plot_colormap_min,
                        max_map=args.plot_colormap_max,
-                       title="Error mapped onto trajectory")
+                       title=result.info["title"])
     plot.draw_coordinate_axes(ax, traj_est, plot_mode,
                               SETTINGS.plot_axis_marker_scale)
+    if args.ros_map_yaml:
+        plot.ros_map(ax, args.ros_map_yaml, plot_mode)
     if SETTINGS.plot_pose_correspondences:
         plot.draw_correspondence_edges(
             ax, traj_est, traj_ref, plot_mode,
@@ -173,3 +189,4 @@ def plot_result(args: argparse.Namespace, result: Result, traj_ref: PosePath3D,
         logger.debug(SEP)
         plot_collection.serialize(args.serialize_plot,
                                   confirm_overwrite=not args.no_warnings)
+    plot_collection.close()

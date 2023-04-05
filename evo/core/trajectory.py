@@ -62,6 +62,8 @@ class PosePath3D(object):
             self._orientations_quat_wxyz = np.array(orientations_quat_wxyz)
         if poses_se3 is not None:
             self._poses_se3 = poses_se3
+        if self.num_poses == 0:
+            raise TrajectoryException("pose data is empty")
         self.meta = {} if meta is None else meta
 
     def __str__(self) -> str:
@@ -78,8 +80,10 @@ class PosePath3D(object):
             np.allclose(p1, p2)
             for p1, p2 in zip(self.poses_se3, other.poses_se3)
         ])
-        equal &= np.allclose(self.orientations_quat_wxyz,
-                             other.orientations_quat_wxyz)
+        equal &= (np.allclose(self.orientations_quat_wxyz,
+                              other.orientations_quat_wxyz)
+                  or np.allclose(self.orientations_quat_wxyz,
+                                 -other.orientations_quat_wxyz))
         equal &= np.allclose(self.positions_xyz, other.positions_xyz)
         return equal
 
@@ -329,6 +333,19 @@ class PoseTrajectory3D(PosePath3D, object):
     def __ne__(self, other: object) -> bool:
         return not self == other
 
+    @property
+    def speeds(self) -> np.ndarray:
+        """
+        :return: array with speed of motion between poses
+        """
+        if self.num_poses < 2:
+            return np.array([])
+        return np.array([
+            calc_speed(self.positions_xyz[i], self.positions_xyz[i + 1],
+                       self.timestamps[i], self.timestamps[i + 1])
+            for i in range(len(self.positions_xyz) - 1)
+        ])
+
     def reduce_to_ids(
             self, ids: typing.Union[typing.Sequence[int], np.ndarray]) -> None:
         super(PoseTrajectory3D, self).reduce_to_ids(ids)
@@ -394,14 +411,10 @@ class PoseTrajectory3D(PosePath3D, object):
         if self.num_poses < 2:
             return {}
         stats = super(PoseTrajectory3D, self).get_statistics()
-        speeds = [
-            calc_speed(self.positions_xyz[i], self.positions_xyz[i + 1],
-                       self.timestamps[i], self.timestamps[i + 1])
-            for i in range(len(self.positions_xyz) - 1)
-        ]
-        vmax = max(speeds)
-        vmin = min(speeds)
-        vmean = np.mean(speeds)
+        speeds = self.speeds
+        vmax = speeds.max()
+        vmin = speeds.min()
+        vmean = speeds.mean()
         stats.update({
             "v_max (m/s)": vmax,
             "v_min (m/s)": vmin,
@@ -490,7 +503,7 @@ def calc_speed(xyz_1: np.ndarray, xyz_2: np.ndarray, t_1: float,
     if (t_2 - t_1) <= 0:
         raise TrajectoryException("bad timestamps: " + str(t_1) + " & " +
                                   str(t_2))
-    return np.linalg.norm(xyz_2 - xyz_1) / (t_2 - t_1)
+    return float(np.linalg.norm(xyz_2 - xyz_1) / (t_2 - t_1))
 
 
 def calc_angular_speed(p_1: np.ndarray, p_2: np.ndarray, t_1: float,
@@ -506,12 +519,8 @@ def calc_angular_speed(p_1: np.ndarray, p_2: np.ndarray, t_1: float,
     if (t_2 - t_1) <= 0:
         raise TrajectoryException("bad timestamps: " + str(t_1) + " & " +
                                   str(t_2))
-    if degrees:
-        angle_1 = lie.so3_log(p_1[:3, :3]) * 180 / np.pi
-        angle_2 = lie.so3_log(p_2[:3, :3]) * 180 / np.pi
-    else:
-        angle_1 = lie.so3_log(p_1[:3, :3])
-        angle_2 = lie.so3_log(p_2[:3, :3])
+    angle_1 = lie.so3_log(p_1[:3, :3], degrees)
+    angle_2 = lie.so3_log(p_2[:3, :3], degrees)
     return (angle_2 - angle_1) / (t_2 - t_1)
 
 

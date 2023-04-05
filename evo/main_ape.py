@@ -49,8 +49,10 @@ def parser() -> argparse.ArgumentParser:
 
     algo_opts.add_argument(
         "-r", "--pose_relation", default="trans_part",
-        help="pose relation on which the APE is based",
-        choices=["full", "trans_part", "rot_part", "angle_deg", "angle_rad"])
+        help="pose relation on which the APE is based", choices=[
+            "full", "trans_part", "rot_part", "angle_deg", "angle_rad",
+            "point_distance"
+        ])
     algo_opts.add_argument("-a", "--align",
                            help="alignment with Umeyama's method (no scale)",
                            action="store_true")
@@ -75,6 +77,11 @@ def parser() -> argparse.ArgumentParser:
         "--plot_mode", default=SETTINGS.plot_mode_default,
         help="the axes for plot projection",
         choices=["xy", "xz", "yx", "yz", "zx", "zy", "xyz"])
+    output_opts.add_argument(
+        "--plot_x_dimension", choices=["index", "seconds",
+                                       "distances"], default="seconds",
+        help="dimension that is used on the x-axis of the raw value plot"
+        "(default: seconds, or index if no timestamps are present)")
     output_opts.add_argument(
         "--plot_colormap_max", type=float,
         help="the upper bound used for the color map plot "
@@ -151,8 +158,17 @@ def parser() -> argparse.ArgumentParser:
     bag_parser.add_argument("ref_topic", help="reference trajectory topic")
     bag_parser.add_argument("est_topic", help="estimated trajectory topic")
 
+    bag2_parser = sub_parsers.add_parser(
+        "bag2", parents=[shared_parser],
+        description="{} for ROS2 bag files - {}".format(basic_desc, lic))
+    bag2_parser.add_argument("bag", help="ROS2 bag file")
+    bag2_parser.add_argument("ref_topic", help="reference trajectory topic")
+    bag2_parser.add_argument("est_topic", help="estimated trajectory topic")
+
     # Add time-sync options to parser of trajectory formats.
-    for trajectory_parser in {bag_parser, euroc_parser, tum_parser}:
+    for trajectory_parser in {
+            bag_parser, bag2_parser, euroc_parser, tum_parser
+    }:
         trajectory_parser.add_argument(
             "--t_max_diff", type=float, default=0.01,
             help="maximum timestamp difference for data association")
@@ -220,6 +236,8 @@ def ape(traj_ref: PosePath3D, traj_est: PosePath3D,
             [t - traj_est.timestamps[0] for t in traj_est.timestamps])
         ape_result.add_np_array("seconds_from_start", seconds_from_start)
         ape_result.add_np_array("timestamps", traj_est.timestamps)
+        ape_result.add_np_array("distances_from_start", traj_ref.distances)
+        ape_result.add_np_array("distances", traj_est.distances)
 
     if alignment_transformation is not None:
         ape_result.add_np_array("alignment_transformation_sim3",

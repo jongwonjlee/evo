@@ -92,10 +92,11 @@ setup(
         "upload": UploadCommand
     },
     install_requires=[
-        "numpy",
+        "numpy>=1.18.5",
         "matplotlib",
         "scipy>=1.2",
         "pandas",
+        "numexpr>=2.7.3",
         "seaborn>=0.9",
         "natsort",
         "argcomplete",
@@ -103,17 +104,17 @@ setup(
         "pygments",
         "pyyaml",
         "pillow",
+        "rosbags>=0.9.10",
     ],
-    python_requires=">=3.6",
+    python_requires=">=3.8",
     classifiers=[
         "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
         "Topic :: Scientific/Engineering",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: Implementation :: CPython"
     ]
 )

@@ -49,8 +49,10 @@ def parser() -> argparse.ArgumentParser:
 
     algo_opts.add_argument(
         "-r", "--pose_relation", default="trans_part",
-        help="pose relation on which the RPE is based",
-        choices=["full", "trans_part", "rot_part", "angle_deg", "angle_rad"])
+        help="pose relation on which the RPE is based", choices=[
+            "full", "trans_part", "rot_part", "angle_deg", "angle_rad",
+            "point_distance", "point_distance_error_ratio"
+        ])
     algo_opts.add_argument("-a", "--align",
                            help="alignment with Umeyama's method (no scale)",
                            action="store_true")
@@ -75,8 +77,11 @@ def parser() -> argparse.ArgumentParser:
     algo_opts.add_argument(
         "--all_pairs",
         action="store_true",
-        help="use all pairs instead of consecutive pairs (disables plot)",
+        help="use all pairs instead of consecutive pairs",
     )
+    algo_opts.add_argument(
+        "--pairs_from_reference", action="store_true",
+        help="determine the pose pairs from the reference trajectory")
 
     output_opts.add_argument(
         "-p",
@@ -88,6 +93,11 @@ def parser() -> argparse.ArgumentParser:
         "--plot_mode", default=SETTINGS.plot_mode_default,
         help="the axes for plot projection",
         choices=["xy", "xz", "yx", "yz", "zx", "zy", "xyz"])
+    output_opts.add_argument(
+        "--plot_x_dimension", choices=["index", "seconds",
+                                       "distances"], default="seconds",
+        help="dimension that is used on the x-axis of the raw value plot"
+        "(default: seconds, or index if no timestamps are present)")
     output_opts.add_argument(
         "--plot_colormap_max", type=float,
         help="the upper bound used for the color map plot "
@@ -164,8 +174,17 @@ def parser() -> argparse.ArgumentParser:
     bag_parser.add_argument("ref_topic", help="reference trajectory topic")
     bag_parser.add_argument("est_topic", help="estimated trajectory topic")
 
+    bag2_parser = sub_parsers.add_parser(
+        "bag2", parents=[shared_parser],
+        description="{} for ROS2 bag files - {}".format(basic_desc, lic))
+    bag2_parser.add_argument("bag", help="ROS2 bag file")
+    bag2_parser.add_argument("ref_topic", help="reference trajectory topic")
+    bag2_parser.add_argument("est_topic", help="estimated trajectory topic")
+
     # Add time-sync options to parser of trajectory formats.
-    for trajectory_parser in {bag_parser, euroc_parser, tum_parser}:
+    for trajectory_parser in {
+            bag_parser, bag2_parser, euroc_parser, tum_parser
+    }:
         trajectory_parser.add_argument(
             "--t_max_diff", type=float, default=0.01,
             help="maximum timestamp difference for data association")
@@ -186,8 +205,8 @@ def parser() -> argparse.ArgumentParser:
 def rpe(traj_ref: PosePath3D, traj_est: PosePath3D,
         pose_relation: metrics.PoseRelation, delta: float,
         delta_unit: metrics.Unit, rel_delta_tol: float = 0.1,
-        all_pairs: bool = False, align: bool = False,
-        correct_scale: bool = False, n_to_align: int = -1,
+        all_pairs: bool = False, pairs_from_reference: bool = False,
+        align: bool = False, correct_scale: bool = False, n_to_align: int = -1,
         align_origin: bool = False, ref_name: str = "reference",
         est_name: str = "estimate", support_loop: bool = False) -> Result:
 
@@ -206,7 +225,7 @@ def rpe(traj_ref: PosePath3D, traj_est: PosePath3D,
     logger.debug(SEP)
     data = (traj_ref, traj_est)
     rpe_metric = metrics.RPE(pose_relation, delta, delta_unit, rel_delta_tol,
-                             all_pairs)
+                             all_pairs, pairs_from_reference)
     rpe_metric.process_data(data)
 
     title = str(rpe_metric)
@@ -234,16 +253,25 @@ def rpe(traj_ref: PosePath3D, traj_est: PosePath3D,
         import copy
         traj_ref = copy.deepcopy(traj_ref)
         traj_est = copy.deepcopy(traj_est)
-    traj_ref.reduce_to_ids(rpe_metric.delta_ids)
-    traj_est.reduce_to_ids(rpe_metric.delta_ids)
+    # Note: the pose at index 0 is added for plotting purposes, although it has
+    # no RPE value assigned to it since it has no previous pose.
+    # (for each pair (i, j), the 'delta_ids' represent only j)
+    delta_ids_with_first_pose = [0] + rpe_metric.delta_ids
+    traj_ref.reduce_to_ids(delta_ids_with_first_pose)
+    traj_est.reduce_to_ids(delta_ids_with_first_pose)
     rpe_result.add_trajectory(ref_name, traj_ref)
     rpe_result.add_trajectory(est_name, traj_est)
 
     if isinstance(traj_est, PoseTrajectory3D):
         seconds_from_start = np.array(
             [t - traj_est.timestamps[0] for t in traj_est.timestamps])
-        rpe_result.add_np_array("seconds_from_start", seconds_from_start)
-        rpe_result.add_np_array("timestamps", traj_est.timestamps)
+        # Save times/distances of each calculated value.
+        # Note: here the first index needs that was added before needs to be
+        # ignored again as it's not relevant for the values (see above).
+        rpe_result.add_np_array("seconds_from_start", seconds_from_start[1:])
+        rpe_result.add_np_array("timestamps", traj_est.timestamps[1:])
+        rpe_result.add_np_array("distances_from_start", traj_ref.distances[1:])
+        rpe_result.add_np_array("distances", traj_est.distances[1:])
 
     if alignment_transformation is not None:
         rpe_result.add_np_array("alignment_transformation_sim3",
@@ -293,6 +321,7 @@ def run(args: argparse.Namespace) -> None:
         delta_unit=delta_unit,
         rel_delta_tol=args.delta_tol,
         all_pairs=args.all_pairs,
+        pairs_from_reference=args.pairs_from_reference,
         align=args.align,
         correct_scale=args.correct_scale,
         n_to_align=args.n_to_align,
