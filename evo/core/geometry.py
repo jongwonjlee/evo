@@ -50,9 +50,17 @@ def umeyama_alignment(x: np.ndarray, y: np.ndarray,
     # m = dimension, n = nr. of data points
     m, n = x.shape
 
+    # set tolerance for near-zero values
+    tolerance = 1e-6
+
+    # identify the near-zero columns in reference data (y)
+    zero_cols = np.max(np.abs(y), axis=0) < tolerance
+    num_zero_cols = np.sum(zero_cols)
+    # print(f"# OF ZERO COLS: {num_zero_cols}")
+
     # means, eq. 34 and 35
-    mean_x = x.mean(axis=1)
-    mean_y = y.mean(axis=1)
+    mean_x = np.mean(x[:, ~zero_cols], axis=1)
+    mean_y = np.mean(y[:, ~zero_cols], axis=1)
 
     # variance, eq. 36
     # "transpose" for column subtraction
@@ -61,8 +69,9 @@ def umeyama_alignment(x: np.ndarray, y: np.ndarray,
     # covariance matrix, eq. 38
     outer_sum = np.zeros((m, m))
     for i in range(n):
-        outer_sum += np.outer((y[:, i] - mean_y), (x[:, i] - mean_x))
-    cov_xy = np.multiply(1.0 / n, outer_sum)
+        if not zero_cols[i] == True:
+            outer_sum += np.outer((y[:, i] - mean_y), (x[:, i] - mean_x))
+    cov_xy = np.multiply(1.0 / (n-num_zero_cols), outer_sum)
 
     # SVD (text betw. eq. 38 and 39)
     u, d, v = np.linalg.svd(cov_xy)

@@ -105,31 +105,49 @@ class PE(Metric):
     def __init__(self):
         self.unit = Unit.none
         self.error = np.array([])
+        self.error_stat = np.array([])
+        self.mask = np.array([])
 
     def __str__(self) -> str:
         return "PE metric base class"
 
     @abc.abstractmethod
     def process_data(self, data):
+        ### get a mask to remove indices with zero data in traj_ref!
+        
+        # set tolerance for near-zero values
+        tolerance = 1e-6
+
+        # identify the near-zero columns in reference data
+        traj_ref, _ = data
+
+        zero_refs = np.max(np.abs(traj_ref.positions_xyz), axis=1) < tolerance
+        num_refs = np.sum(zero_refs)
+        print(f"# OF ZERO REFS: {num_refs}")
+        self.mask = ~zero_refs
+
+        # mask out data with zero ref values
+        self.error_stat = self.error[self.mask]
+
         return
 
     def get_statistic(self, statistics_type: StatisticsType) -> float:
         if statistics_type == StatisticsType.rmse:
-            squared_errors = np.power(self.error, 2)
+            squared_errors = np.power(self.error_stat, 2)
             return math.sqrt(np.mean(squared_errors))
         elif statistics_type == StatisticsType.sse:
-            squared_errors = np.power(self.error, 2)
+            squared_errors = np.power(self.error_stat, 2)
             return np.sum(squared_errors)
         elif statistics_type == StatisticsType.mean:
-            return float(np.mean(self.error))
+            return float(np.mean(self.error_stat))
         elif statistics_type == StatisticsType.median:
-            return np.median(self.error)
+            return np.median(self.error_stat)
         elif statistics_type == StatisticsType.max:
-            return np.max(self.error)
+            return np.max(self.error_stat)
         elif statistics_type == StatisticsType.min:
-            return np.min(self.error)
+            return np.min(self.error_stat)
         elif statistics_type == StatisticsType.std:
-            return float(np.std(self.error))
+            return float(np.std(self.error_stat))
         else:
             raise MetricsException("unsupported statistics_type")
 
@@ -300,6 +318,8 @@ class APE(PE):
         self.pose_relation = pose_relation
         self.E: typing.List[np.ndarray] = []
         self.error = np.array([])
+        self.error_stat = np.array([])
+        self.mask = np.array([])
         if pose_relation == PoseRelation.translation_part:
             self.unit = Unit.meters
         elif pose_relation == PoseRelation.rotation_angle_deg:
@@ -374,6 +394,21 @@ class APE(PE):
         else:
             raise MetricsException("unsupported pose_relation")
 
+        ### get a mask to remove indices with zero data in traj_ref!
+        
+        # set tolerance for near-zero values
+        tolerance = 1e-6
+
+        # identify the near-zero columns in reference data
+        traj_ref, _ = data
+
+        zero_refs = np.max(np.abs(traj_ref.positions_xyz), axis=1) < tolerance
+        num_refs = np.sum(zero_refs)
+        print(f"# OF ZERO REFS: {num_refs}")
+        self.mask = ~zero_refs
+
+        # mask out data with zero ref values
+        self.error_stat = self.error[self.mask]
 
 def id_pairs_from_delta(poses: typing.Sequence[np.ndarray], delta: float,
                         delta_unit: Unit, rel_tol: float = 0.1,
