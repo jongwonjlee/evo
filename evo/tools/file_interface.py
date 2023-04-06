@@ -144,33 +144,6 @@ def write_tum_trajectory_file(file_path, traj: PoseTrajectory3D,
         logger.info("Trajectory saved to: " + file_path)
 
 
-def read_tum_like_trajectory_file(file_path) -> PoseAuxTrajectory3D:
-    """
-    parses trajectory file in TUM-like format (timestamp tx ty tz qx qy qz qw ax ay az wx wy wz)
-    :param file_path: the trajectory file path (or file handle)
-    :return: trajectory.PoseTrajectory3D object
-    """
-    raw_mat = csv_read_matrix(file_path, delim=" ", comment_str="#")
-    error_msg = ("TUM-like trajectory files must have 14 entries per row "
-                 "and no trailing delimiter at the end of the rows (space)")
-    if not raw_mat or (len(raw_mat) > 0 and len(raw_mat[0]) != 14):
-        raise FileInterfaceException(error_msg)
-    try:
-        mat = np.array(raw_mat).astype(float)
-    except ValueError:
-        raise FileInterfaceException(error_msg)
-    stamps = mat[:, 0]  # n x 1
-    xyz = mat[:, 1:4]  # n x 3
-    quat = mat[:, 4:8]  # n x 4
-    quat = np.roll(quat, 1, axis=1)  # shift 1 column -> w in front column
-    axyz = mat[:, 8:11] # n x 3
-    wxyz = mat[:, 11:14] # n x 3
-    if not hasattr(file_path, 'read'):  # if not file handle
-        logger.debug("Loaded {} stamps and poses from: {}".format(
-            len(stamps), file_path))
-    return PoseAuxTrajectory3D(xyz, quat, axyz, wxyz, stamps)
-
-
 def read_kitti_poses_file(file_path) -> PosePath3D:
     """
     parses pose file in KITTI format (first 3 rows of SE(3) matrix per line)

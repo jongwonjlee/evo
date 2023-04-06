@@ -126,7 +126,7 @@ class PE(Metric):
 
         zero_refs = np.max(np.abs(traj_ref.positions_xyz), axis=1) < tolerance
         num_refs = np.sum(zero_refs)
-        print(f"# OF ZERO REFS: {num_refs}")
+        # print(f"# OF ZERO REFS: {num_refs}")
         self.mask = ~zero_refs
 
         # mask out data with zero ref values

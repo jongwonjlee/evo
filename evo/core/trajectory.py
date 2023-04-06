@@ -430,67 +430,6 @@ class Trajectory(PoseTrajectory3D):
     pass  # TODO compat
 
 
-class PoseAuxPath3D(PosePath3D, object):
-    """
-    path+imu truth (linacc, angvel), no temporal information
-    also: base class for real trajectory
-    """
-    def __init__(
-            self, positions_xyz: typing.Optional[np.ndarray] = None,
-            orientations_quat_wxyz: typing.Optional[np.ndarray] = None,
-            lin_acc_xyz: typing.Optional[np.ndarray] = None,
-            ang_vel_xyz: typing.Optional[np.ndarray] = None,
-            poses_se3: typing.Optional[typing.Sequence[np.ndarray]] = None,
-            meta: typing.Optional[dict] = None):
-        """
-        :param positions_xyz: nx3 list of x,y,z positions
-        :param orientations_quat_wxyz: nx4 list of quaternions (w,x,y,z format)
-        :lin_acc_xyz: nx3 list of x,y,z linear accelerations
-        :ang_vel_xyz: nx3 list of x,y,z angular velocities
-        :param poses_se3: list of SE(3) poses
-        :param meta: optional metadata
-        """
-        if (positions_xyz is None
-                or orientations_quat_wxyz is None) and poses_se3 is None:
-            raise TrajectoryException("must provide at least positions_xyz "
-                                      "& orientations_quat_wxyz or poses_se3")
-        if positions_xyz is not None:
-            self._positions_xyz = np.array(positions_xyz)
-        if orientations_quat_wxyz is not None:
-            self._orientations_quat_wxyz = np.array(orientations_quat_wxyz)
-        if lin_acc_xyz is not None:
-            self._lin_acc_xyz = np.array(lin_acc_xyz)
-        if ang_vel_xyz is not None:
-            self._ang_vel_xyz = np.array(ang_vel_xyz)
-        if poses_se3 is not None:
-            self._poses_se3 = poses_se3
-        self.meta = {} if meta is None else meta
-
-
-class PoseAuxTrajectory3D(PoseAuxPath3D, object):
-    """
-    a PoseAuxPath with temporal information
-    """
-    def __init__(
-            self, positions_xyz: typing.Optional[np.ndarray] = None,
-            orientations_quat_wxyz: typing.Optional[np.ndarray] = None,
-            lin_acc_xyz: typing.Optional[np.ndarray] = None,
-            ang_vel_xyz: typing.Optional[np.ndarray] = None,
-            timestamps: typing.Optional[np.ndarray] = None,
-            poses_se3: typing.Optional[typing.Sequence[np.ndarray]] = None,
-            meta: typing.Optional[dict] = None):
-        """
-        :param timestamps: optional nx1 list of timestamps
-        """
-        super(PoseAuxTrajectory3D,
-              self).__init__(positions_xyz, orientations_quat_wxyz, lin_acc_xyz, ang_vel_xyz, poses_se3,
-                             meta)
-        # this is a bit ugly...
-        if timestamps is None:
-            raise TrajectoryException("no timestamps provided")
-        self.timestamps = np.array(timestamps)
-
-
 def calc_speed(xyz_1: np.ndarray, xyz_2: np.ndarray, t_1: float,
                t_2: float) -> float:
     """
